@@ -14,6 +14,8 @@ class MyClient(discord.Client):
         self.timer_message = None
         self.game_start = None
         self.turns = 0
+        with open("high_score.txt", "r") as f:
+            self.high_score = int(f.read())
 
     async def on_ready(self):
         print(f'We have logged in as {client.user}')
@@ -21,6 +23,8 @@ class MyClient(discord.Client):
 
     async def on_message(self, message):
         if message.author == client.user:
+            return
+        if message.channel.id != 1125843310750208082:
             return
         if self.timer_message:
             await self.timer_message.delete()
@@ -38,9 +42,13 @@ class MyClient(discord.Client):
             time_elapsed = time.time() - self.game_start
             time_elapsed_string = f'{int(time_elapsed / 86400)} days, {int(time_elapsed % 86400 / 3600)} hours, {int(time_elapsed % 86400 % 3600 / 60)} minutes, and {int(time_elapsed % 86400 % 3600 % 60)} seconds'
             total_turns = self.turns
+            if total_turns > self.high_score:
+                self.high_score = total_turns
+                with open("high_score.txt", "w") as f:
+                    f.write(str(self.high_score))
             self.turns = 0
             self.game_start = None
-            return await message.channel.send(f'Game over!\nThis game lasted {total_turns} turns over {time_elapsed_string}.')
+            return await message.channel.send(f'Game over!\nThis game lasted {total_turns} turns over {time_elapsed_string}.\nThe high score is {self.high_score} turns.')
 
 
 client = MyClient(intents=intents)
