@@ -24,7 +24,7 @@ class MyClient(discord.Client):
     async def on_message(self, message):
         if message.author == client.user:
             return
-        if message.channel.id != 1125843310750208082:
+        if not self.user.mentioned_in(message) or message.mention_everyone is True:
             return
         if self.timer_message:
             await self.timer_message.delete()
