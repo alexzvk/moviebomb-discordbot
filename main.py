@@ -16,6 +16,7 @@ class MyClient(discord.Client):
         self.turns = 0
         self.list_of_movies = []
         self.current_movie = -1
+        self.valid_play = False
         self.headers = {
             "accept": "application/json",
             "Authorization": secret.MOVIE_TOKEN
@@ -30,6 +31,7 @@ class MyClient(discord.Client):
 
 
     async def on_message(self, message):
+        self.valid_play = False
         if message.author == client.user: # don't consider messages the bot sends
             return
         if not self.user.mentioned_in(message) or message.mention_everyone is True: # don't consider messages where the bot is not @ed
@@ -37,7 +39,7 @@ class MyClient(discord.Client):
         if self.previous_player == message.author: # don't allow the same person to make two plays in a row
             return await message.channel.send("Sorry, the same person cannot make two plays in a row!")
         
-        message_content = message.content.replace(f'<@{secret.BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
+        message_content = message.content.replace(f'<@{secret.TEST_BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
         remaining_time = int(time.time()) + 86400 # current time plus 24 hours in seconds
         # first turn special logic, must start with a movie
         if self.turns == 0:
@@ -78,9 +80,13 @@ class MyClient(discord.Client):
         # only on a successful turn do we increment the turn and bar the player from making two moves in a row
         self.turns += 1
         self.previous_player = message.author
+        self.valid_play = True
+        
+        def check(m):
+            return self.valid_play
 
         try:
-            await client.wait_for('message', timeout=86400) # wait one day after a successful play
+            await self.wait_for('message', check=check, timeout=86400) # wait one day after a successful play
         except asyncio.TimeoutError: # if there are no plays and the timer runs out, end the game
             # delete timer message
             if self.timer_message:
