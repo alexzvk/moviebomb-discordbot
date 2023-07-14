@@ -37,7 +37,7 @@ class MyClient(discord.Client):
         if self.previous_player == message.author: # don't allow the same person to make two plays in a row
             return await message.channel.send("Sorry, the same person cannot make two plays in a row!")
         
-        message_content = message.content.replace(f'<@{secret.TEST_BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
+        message_content = message.content.replace(f'<@{secret.BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
         remaining_time = int(time.time()) + 86400 # current time plus 24 hours in seconds
         # first turn special logic, must start with a movie
         if self.turns == 0:
