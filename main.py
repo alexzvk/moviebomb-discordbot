@@ -4,7 +4,6 @@ import asyncio
 import secret # put your bot token in a file called secret.py, name the token BOT_TOKEN
 import requests
 import json
-import threading
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -106,7 +105,7 @@ class MyClient(discord.Client):
         def check(m):
             return self.valid_play
         try:
-            await self.wait_for('message', check=check, timeout=5) # wait one day after a successful play
+            await self.wait_for('message', check=check, timeout=86400) # wait one day after a successful play
         except asyncio.TimeoutError: # if there are no plays and the timer runs out, end the game
             if not self.game_start:
                 return
@@ -198,5 +197,5 @@ class MyClient(discord.Client):
 
 
 client = MyClient(intents=intents)
-client.run(secret.TEST_BOT_TOKEN)
+client.run(secret.BOT_TOKEN)
         
