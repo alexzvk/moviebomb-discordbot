@@ -4,6 +4,7 @@ import asyncio
 import secret # put your bot token in a file called secret.py, name the token BOT_TOKEN
 import requests
 import json
+import threading
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -32,17 +33,22 @@ class MyClient(discord.Client):
 
     async def on_message(self, message):
         self.valid_play = False
-        if message.author == client.user: # don't consider messages the bot sends
-            return
-        if not self.user.mentioned_in(message) or message.mention_everyone is True: # don't consider messages where the bot is not @ed
-            return
-        if self.previous_player == message.author: # don't allow the same person to make two plays in a row
-            return await message.channel.send("Sorry, the same person cannot make two plays in a row!")
-        
-        message_content = message.content.replace(f'<@{secret.TEST_BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
+        message_content = message.content.replace(f'<@{secret.BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
         remaining_time = int(time.time()) + 86400 # current time plus 24 hours in seconds
+        if message.author == client.user: # don't consider messages the bot sends
+            if self.turns == 0:
+                return
+        elif not self.user.mentioned_in(message) or message.mention_everyone is True: # don't consider messages where the bot is not @ed
+            if self.turns == 0:
+                return
+        elif self.previous_player == message.author: # don't allow the same person to make two plays in a row
+            await message.channel.send("Sorry, the same person cannot make two plays in a row!")
+            if self.turns == 0:
+                return
+        
+
         # first turn special logic, must start with a movie
-        if self.turns == 0:
+        elif self.turns == 0:
             url = f'https://api.themoviedb.org/3/search/movie?query={message_content}&include_adult=false&language=en-US&page=1'
 
             response = requests.get(url, headers=self.headers)
@@ -54,46 +60,69 @@ class MyClient(discord.Client):
         
             if self.game_start is None:
                 self.game_start = time.time() # when we finish the first turn, set the game start time for counting the length of the game at the end
+            self.turns += 1
+            self.previous_player = message.author
+            self.valid_play = True
+
         # odd numbered turns we check if an actor is in a particular movie
         elif self.turns % 2 == 1:
             actor_name, movies_actor_is_in = self.verify_actor_in_movie(message_content, self.current_movie)
             if actor_name == "-1":
-                return await message.channel.send("That actor was not found to act in the previous movie.")
+                await message.channel.send("That actor was not found to act in the previous movie.")
             elif actor_name == "-2":
-                return await message.channel.send("Sorry, I couldn't find that actor.")
-            if self.timer_message:
-                await self.timer_message.delete()
-            self.list_of_movies = movies_actor_is_in
-            self.timer_message = await message.channel.send(f'Actor "{actor_name}" is valid.\nCurrently on turn {self.turns + 1}.\nGame will end <t:{remaining_time}:R>')
+                await message.channel.send("Sorry, I couldn't find that actor.")
+            else:
+                if self.timer_message:
+                    await self.timer_message.delete()
+                    #self.timer_message = None
+                self.list_of_movies = movies_actor_is_in
+                self.timer_message = await message.channel.send(f'Actor "{actor_name}" is valid.\nCurrently on turn {self.turns + 1}.\nGame will end <t:{remaining_time}:R>')
+                # only on a successful turn do we increment the turn and bar the player from making two moves in a row
+                self.turns += 1
+                self.previous_player = message.author
+                self.valid_play = True
         # even numbered turns we check if movie has particular actor
         else:
             movie_code, movie_name = self.verify_movie_has_actor(message_content, self.list_of_movies)
             if movie_code == -1:
-                return await message.channel.send("That movie was not found to include the previous actor.")
+                await message.channel.send("That movie was not found to include the previous actor.")
             elif movie_code == -2:
-                return await message.channel.send("Sorry, I couldn't find that movie.")
-            if self.timer_message:
-                await self.timer_message.delete()
-            self.current_movie = movie_code
-            self.timer_message = await message.channel.send(f'Movie "{movie_name}" is valid.\nCurrently on turn {self.turns + 1}.\nGame will end <t:{remaining_time}:R>')
+                await message.channel.send("Sorry, I couldn't find that movie.")
+            else:
+                if self.timer_message:
+                    await self.timer_message.delete()
+                    #self.timer_message = None
+                self.current_movie = movie_code
+                self.timer_message = await message.channel.send(f'Movie "{movie_name}" is valid.\nCurrently on turn {self.turns + 1}.\nGame will end <t:{remaining_time}:R>')
+                # only on a successful turn do we increment the turn and bar the player from making two moves in a row
+                self.turns += 1
+                self.previous_player = message.author
+                self.valid_play = True
 
-        # only on a successful turn do we increment the turn and bar the player from making two moves in a row
-        self.turns += 1
-        self.previous_player = message.author
-        self.valid_play = True
         
+        await self.timer(message)
+    
+    async def timer(self, message):
         def check(m):
             return self.valid_play
-
         try:
-            await self.wait_for('message', check=check, timeout=86400) # wait one day after a successful play
+            await self.wait_for('message', check=check, timeout=5) # wait one day after a successful play
         except asyncio.TimeoutError: # if there are no plays and the timer runs out, end the game
+            if not self.game_start:
+                return
             # delete timer message
-            if self.timer_message:
-                await self.timer_message.delete()
-                self.timer_message = None
+            # if we already have deleted the message previously, we will try this and throw an error
+            # this prevents invalid plays from extending the timer
+            try:
+                if self.timer_message:
+                    await self.timer_message.delete()
+                    self.timer_message = None
+            except:
+                return
+
             # calculate and write out how much time in days, hours, minutes, and seconds the game took
-            time_elapsed = time.time() - self.game_start
+
+            time_elapsed = int(time.time()) - int(self.game_start)
             time_elapsed_string = f'{int(time_elapsed / 86400)} days, {int(time_elapsed % 86400 / 3600)} hours, {int(time_elapsed % 86400 % 3600 / 60)} minutes, and {int(time_elapsed % 86400 % 3600 % 60)} seconds'
             # if game took more turns then high score, update high score
             total_turns = self.turns
@@ -108,8 +137,8 @@ class MyClient(discord.Client):
             self.current_movie = -1
             self.previous_player = None
             return await message.channel.send(f'Game over!\nThis game lasted {total_turns} turns over {time_elapsed_string}.\nThe high score is {self.high_score} turns.\n@ me with a movie to play again!')
-        
-    
+
+
     def verify_actor_in_movie(self, actor_string, movie_id):
         # first make a call to look up the actor and get the actor id
         url = f'https://api.themoviedb.org/3/search/person?query={actor_string}&include_adult=false&language=en-US&page=1'
