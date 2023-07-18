@@ -16,7 +16,7 @@ class MyClient(discord.Client):
         self.turns = 0
         self.list_of_movies = []
         self.current_movie = -1
-        self.valid_play = False
+        #self.valid_play = asyncio.Event()
         self.headers = {
             "accept": "application/json",
             "Authorization": secret.MOVIE_TOKEN
@@ -29,10 +29,16 @@ class MyClient(discord.Client):
     async def on_ready(self):
         print(f'We have logged in as {client.user}')
 
+    async def on_disconnect():
+        print('[main.py on_disconnect()] experienced a disconnect')
+
+    async def on_resumed():
+        print('[main.py on_resumed()] experienced a resume')
+
 
     async def on_message(self, message):
-        self.valid_play = False
-        message_content = message.content.replace(f'<@{secret.BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
+        #self.valid_play = False
+        message_content = message.content.replace(f'<@{secret.TEST_BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
         remaining_time = int(time.time()) + 86400 # current time plus 24 hours in seconds
         if message.author == client.user: # don't consider messages the bot sends
             if self.turns == 0:
@@ -40,10 +46,11 @@ class MyClient(discord.Client):
         elif not self.user.mentioned_in(message) or message.mention_everyone is True: # don't consider messages where the bot is not @ed
             if self.turns == 0:
                 return
-        elif self.previous_player == message.author: # don't allow the same person to make two plays in a row
-            await message.channel.send("Sorry, the same person cannot make two plays in a row!")
-            if self.turns == 0:
-                return
+        #elif self.previous_player == message.author: # don't allow the same person to make two plays in a row
+        #    if self.turns == 0:
+        #        return
+        #    await message.channel.send("Sorry, the same person cannot make two plays in a row!")
+
         
 
         # first turn special logic, must start with a movie
@@ -61,7 +68,7 @@ class MyClient(discord.Client):
                 self.game_start = time.time() # when we finish the first turn, set the game start time for counting the length of the game at the end
             self.turns += 1
             self.previous_player = message.author
-            self.valid_play = True
+            self.dispatch('valid_play')
 
         # odd numbered turns we check if an actor is in a particular movie
         elif self.turns % 2 == 1:
@@ -79,7 +86,7 @@ class MyClient(discord.Client):
                 # only on a successful turn do we increment the turn and bar the player from making two moves in a row
                 self.turns += 1
                 self.previous_player = message.author
-                self.valid_play = True
+                self.dispatch('valid_play')
         # even numbered turns we check if movie has particular actor
         else:
             movie_code, movie_name = self.verify_movie_has_actor(message_content, self.list_of_movies)
@@ -96,16 +103,15 @@ class MyClient(discord.Client):
                 # only on a successful turn do we increment the turn and bar the player from making two moves in a row
                 self.turns += 1
                 self.previous_player = message.author
-                self.valid_play = True
-
-        
+                self.dispatch('valid_play')
         await self.timer(message)
     
     async def timer(self, message):
-        def check(m):
-            return self.valid_play
+        #def check(m):
+        #    return self.valid_play
+        #self.valid_play.clear()
         try:
-            await self.wait_for('message', check=check, timeout=86400) # wait one day after a successful play
+            await self.wait_for('valid_play', timeout=86400) # wait one day after a successful play
         except asyncio.TimeoutError: # if there are no plays and the timer runs out, end the game
             if not self.game_start:
                 return
@@ -137,6 +143,8 @@ class MyClient(discord.Client):
             self.previous_player = None
             return await message.channel.send(f'Game over!\nThis game lasted {total_turns} turns over {time_elapsed_string}.\nThe high score is {self.high_score} turns.\n@ me with a movie to play again!')
 
+    async def on_valid_play(self):
+        return
 
     def verify_actor_in_movie(self, actor_string, movie_id):
         # first make a call to look up the actor and get the actor id
@@ -197,5 +205,5 @@ class MyClient(discord.Client):
 
 
 client = MyClient(intents=intents)
-client.run(secret.BOT_TOKEN)
+client.run(secret.TEST_BOT_TOKEN)
         
