@@ -38,16 +38,16 @@ class MyClient(discord.Client):
     async def on_ready(self):
         print(f'We have logged in as {client.user}')
 
-    async def on_disconnect():
+    async def on_disconnect(self):
         print('[main.py on_disconnect()] experienced a disconnect')
 
-    async def on_resumed():
+    async def on_resumed(self):
         print('[main.py on_resumed()] experienced a resume')
 
 
     async def on_message(self, message):
         #self.valid_play = False
-        message_content = message.content.replace(f'<@{secret.TEST_BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
+        message_content = message.content.replace(f'<@{secret.BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
         remaining_time = int(time.time()) + 86400 # current time plus 24 hours in seconds
         if message.author == client.user: # don't consider messages the bot sends
             if self.turns == 0:
@@ -242,10 +242,11 @@ class MyClient(discord.Client):
     async def achievement_checker(self, message, movie_id):
         if movie_id in self.tom_hanks_movies:
             self.tom_hanks_counter += 1
-            self.tom_hanks_movies.remove(movie_id)
         if self.tom_hanks_counter == 3:
+            self.tom_hanks_counter += 1
             await message.channel.send("Congratulations! You made the achievement: 'Hanks for the memories:\nName 3 Tom Hanks movies in one game.'")
         if len(self.movie_years) == 5:
+            self.movie_years.add("000")
             await message.channel.send("Congratulations! You made the achievement: 'Decades of Cinema:\nName movies from 5 different decades in one game.'")
         if movie_id == 2565:
             await message.channel.send("Congratulations! You made the achievement: 'The Best Movie OF ALL TIME:\nName the movie 'Joe versus The Volcano'.'")
@@ -261,5 +262,5 @@ class MyClient(discord.Client):
 
 
 client = MyClient(intents=intents)
-client.run(secret.TEST_BOT_TOKEN)
+client.run(secret.BOT_TOKEN)
         
