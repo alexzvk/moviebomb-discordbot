@@ -1,9 +1,10 @@
 import discord
 import time
 import asyncio
-import secret # put your bot token in a file called secret.py, name the token BOT_TOKEN
+#import secret # put your bot token in a file called secret.py, name the token BOT_TOKEN
 import requests
 import json
+import os
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -19,7 +20,7 @@ class MyClient(discord.Client):
         #self.valid_play = asyncio.Event()
         self.headers = {
             "accept": "application/json",
-            "Authorization": secret.MOVIE_TOKEN
+            "Authorization": os.getenv("MOVIE_TOKEN")
         }
         self.previous_player = None
         with open("high_score.txt", "r") as f:
@@ -47,7 +48,7 @@ class MyClient(discord.Client):
 
     async def on_message(self, message):
         #self.valid_play = False
-        message_content = message.content.replace(f'<@{secret.BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
+        message_content = message.content.replace(f'<@{os.getenv("BOT_USERNAME")}>', '') # remove the @ing of the bot from the message content when looking things up
         remaining_time = int(time.time()) + 86400 # current time plus 24 hours in seconds
         if message.author == client.user: # don't consider messages the bot sends
             if self.turns == 0:
@@ -262,5 +263,5 @@ class MyClient(discord.Client):
 
 
 client = MyClient(intents=intents)
-client.run(secret.BOT_TOKEN)
+client.run(os.getenv("BOT_TOKEN"))
         
