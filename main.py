@@ -47,6 +47,7 @@ class MyClient(discord.Client):
 
 
     async def on_message(self, message):
+        await client.process_commands(message)
         #self.valid_play = False
         message_content = message.content.replace(f'<@{os.getenv("BOT_USERNAME")}>', '') # remove the @ing of the bot from the message content when looking things up
         remaining_time = int(time.time()) + 86400 # current time plus 24 hours in seconds
