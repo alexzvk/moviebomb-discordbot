@@ -1,7 +1,7 @@
 import discord
 import time
 import asyncio
-#import secret # put your bot token in a file called secret.py, name the token BOT_TOKEN
+import secret # put your bot token in a file called secret.py, name the token BOT_TOKEN
 import requests
 import json
 import os
@@ -15,12 +15,14 @@ class MyClient(discord.Client):
         self.timer_message = None
         self.game_start = None
         self.turns = 0
-        self.list_of_movies = []
+        self.list_of_movies = [-1]
         self.current_movie = -1
         #self.valid_play = asyncio.Event()
+        self.went_back = False
+        self.prev_mes = "If you're seeing this, something broke LMAO"
         self.headers = {
             "accept": "application/json",
-            "Authorization": os.getenv("MOVIE_TOKEN")
+            "Authorization": secret.MOVIE_TOKEN
         }
         self.previous_player = None
         with open("high_score.txt", "r") as f:
@@ -34,6 +36,11 @@ class MyClient(discord.Client):
         self.actors_played_this_game = []
         self.horror_movie_counter = 0
         self.tilda_swinton_movies = [20308, 7351, 24936, 9300, 41110, 41801, 38987, 81540, 83401, 84012, 96484, 106304, 110838, 112477, 146140, 255500, 261369, 324807, 338630, 341240, 15030, 71859, 428702, 99453, 413786, 387426, 502386, 511819, 518852, 554794, 556694, 558398, 566038, 580728, 586745, 588994, 565249, 41970, 288388, 542955, 671577, 790867, 435353, 860004, 881366, 901565, 346080, 894319, 1031459, 498357, 1139231, 237, 1546, 31262, 8284, 41488, 41947, 42739, 152603, 400618, 230915, 245324, 262588, 291060, 333032, 360735, 361292, 369328, 445666, 497425, 499805, 665774, 720725, 113102, 852247, 800158, 4566, 4975, 43654, 94794, 140527, 473019, 535581, 542178, 615902, 844176, 999041, 1059301, 308, 1907, 2757, 58937, 110415, 214170, 520900, 526946, 411, 4944, 202872, 222962, 555604, 722902, 747188, 20537, 270487, 284052, 157834, 83666, 561, 1903, 10140, 1049516, 370648, 4922, 271718, 582959, 473021, 197393, 25832, 318042, 120467, 399174, 471208, 299534, 354287, 2454, 473033]
+        with open("current_score.txt", "r") as f:
+            saved_vars = f.readlines()
+            self.turns = int(saved_vars[0])
+            self.current_movie = int(saved_vars[1])
+            self.list_of_movies = [int(x) for x in saved_vars[2].split(",")]
 
 
     async def on_ready(self):
@@ -47,9 +54,9 @@ class MyClient(discord.Client):
 
 
     async def on_message(self, message):
-        await client.process_commands(message)
+        time.sleep(1) # prevent rate limiting
         #self.valid_play = False
-        message_content = message.content.replace(f'<@{os.getenv("BOT_USERNAME")}>', '') # remove the @ing of the bot from the message content when looking things up
+        message_content = message.content.replace(f'<@{secret.BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
         remaining_time = int(time.time()) + 86400 # current time plus 24 hours in seconds
         if message.author == client.user: # don't consider messages the bot sends
             if self.turns == 0:
@@ -61,7 +68,21 @@ class MyClient(discord.Client):
         #    if self.turns == 0:
         #        return
         #    await message.channel.send("Sorry, the same person cannot make two plays in a row!")
-
+        elif message_content.strip() == "go back" and self.turns == 0:
+            return await message.channel.send("There's nothing to go back to, silly.")
+        elif message_content.strip() == "go back" and self.went_back == False and self.turns > 0:
+            self.turns -= 1
+            self.went_back = True
+            if self.turns % 2 == 1:
+                self.actors_played_this_game.pop()
+            if self.turns % 2 == 0:
+                self.movies_played_this_game.pop()
+            if self.turns == 0:
+                return await message.channel.send("New game!")
+            return await message.channel.send("Went back one turn.")
+        
+        elif message_content.strip() == "go back" and self.went_back == True:
+            return await message.channel.send("We don't have the technology to go back more than once... yet")
         
 
         # first turn special logic, must start with a movie
@@ -71,13 +92,15 @@ class MyClient(discord.Client):
             response = requests.get(url, headers=self.headers)
             try:
                 self.current_movie = json.loads(response.text)['results'][0]['id'] # get first movie id from search (too much work to iterate through all search results)
-                self.timer_message = await message.channel.send(f'Movie "{json.loads(response.text)["results"][0]["title"]}" is valid.\nCurrently on turn 1.\nGame will end <t:{remaining_time}:R>')
+                self.prev_mes = f'Movie "{json.loads(response.text)["results"][0]["title"]}" is valid.\nCurrently on turn 1.\nGame will end <t:{remaining_time}:R>'
+                self.timer_message = await message.channel.send(self.prev_mes)
             except:
                 return await message.channel.send("Sorry, I couldn't find that movie.")
         
             if self.game_start is None:
                 self.game_start = time.time() # when we finish the first turn, set the game start time for counting the length of the game at the end
             self.turns += 1
+            self.went_back = False
             self.previous_player = message.author
             self.dispatch('valid_play')
             self.movies_played_this_game.append(self.current_movie)
@@ -95,11 +118,14 @@ class MyClient(discord.Client):
             else:
                 if self.timer_message:
                     await self.timer_message.delete()
+                    time.sleep(1) # prevent rate limiting
                     #self.timer_message = None
                 self.list_of_movies = movies_actor_is_in
-                self.timer_message = await message.channel.send(f'Actor "{actor_name}" is valid.\nCurrently on turn {self.turns + 1}.\nGame will end <t:{remaining_time}:R>')
+                self.prev_mes = f'Actor "{actor_name}" is valid.\nCurrently on turn {self.turns + 1}.\nGame will end <t:{remaining_time}:R>'
+                self.timer_message = await message.channel.send(self.prev_mes)
                 # only on a successful turn do we increment the turn and bar the player from making two moves in a row
                 self.turns += 1
+                self.went_back = False
                 self.previous_player = message.author
                 self.dispatch('valid_play')
                 await self.achievement_checker(message, -1)
@@ -115,11 +141,14 @@ class MyClient(discord.Client):
             else:
                 if self.timer_message:
                     await self.timer_message.delete()
+                    time.sleep(1) # prevent rate limiting
                     #self.timer_message = None
                 self.current_movie = movie_code
-                self.timer_message = await message.channel.send(f'Movie "{movie_name}" is valid.\nCurrently on turn {self.turns + 1}.\nGame will end <t:{remaining_time}:R>')
+                self.prev_mes = f'Movie "{movie_name}" is valid.\nCurrently on turn {self.turns + 1}.\nGame will end <t:{remaining_time}:R>'
+                self.timer_message = await message.channel.send(self.prev_mes)
                 # only on a successful turn do we increment the turn and bar the player from making two moves in a row
                 self.turns += 1
+                self.went_back = False
                 self.previous_player = message.author
                 self.dispatch('valid_play')
                 await self.achievement_checker(message, movie_code)
@@ -130,6 +159,8 @@ class MyClient(discord.Client):
         #    return self.valid_play
         #self.valid_play.clear()
         try:
+            with open("current_score.txt", "w") as f:
+                f.write(str(self.turns) + "\n" + str(self.current_movie) + "\n" + ",".join(str(x) for x in self.list_of_movies))
             await self.wait_for('valid_play', timeout=86400) # wait one day after a successful play
         except asyncio.TimeoutError: # if there are no plays and the timer runs out, end the game
             if not self.game_start:
@@ -155,6 +186,8 @@ class MyClient(discord.Client):
                 with open("high_score.txt", "w") as f:
                     f.write(str(self.high_score))
             # reinitialize all variables, send game end message
+            with open("current_score.txt", "w") as f:
+                f.write("0\n-1\n-1")
             self.turns = 0
             self.game_start = None
             self.list_of_movies = []
@@ -264,5 +297,5 @@ class MyClient(discord.Client):
 
 
 client = MyClient(intents=intents)
-client.run(os.getenv("BOT_TOKEN"))
+client.run(secret.BOT_TOKEN)
 
