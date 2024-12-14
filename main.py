@@ -5,6 +5,7 @@ import secret # put your bot token in a file called secret.py, name the token BO
 import requests
 import json
 import os
+import datetime
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -56,7 +57,7 @@ class MyClient(discord.Client):
     async def on_message(self, message):
         time.sleep(1) # prevent rate limiting
         #self.valid_play = False
-        message_content = message.content.replace(f'<@{secret.BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
+        message_content = message.content.replace(f'<@{secret.TEST_BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
         remaining_time = int(time.time()) + 86400 # current time plus 24 hours in seconds
         if message.author == client.user: # don't consider messages the bot sends
             if self.turns == 0:
@@ -89,12 +90,21 @@ class MyClient(discord.Client):
         elif self.turns == 0:
             url = f'https://api.themoviedb.org/3/search/movie?query={message_content}&include_adult=false&language=en-US&page=1'
 
-            response = requests.get(url, headers=self.headers)
+            response = json.loads(requests.get(url, headers=self.headers).text)["results"]
+            entry = 0
             try:
-                self.current_movie = json.loads(response.text)['results'][0]['id'] # get first movie id from search (too much work to iterate through all search results)
-                self.prev_mes = f'Movie "{json.loads(response.text)["results"][0]["title"]}" is valid.\nCurrently on turn 1.\nGame will end <t:{remaining_time}:R>'
-                self.timer_message = await message.channel.send(self.prev_mes)
-            except:
+                while entry < len(response):
+                    self.current_movie = response[entry]['id'] # get first movie id from search (too much work to iterate through all search results)
+                    if self.compare_dates(response[entry]['release_date'], datetime.date.today().strftime('%Y-%m-%d')):
+                        print(f"Movie has not come out yet", response[entry]['release_date'])
+                        entry += 1
+                        continue
+                    self.prev_mes = f'Movie "{response[entry]["title"]} ({response[entry]["release_date"].split("-")[0]})" is valid.\nCurrently on turn 1.\nGame will end <t:{remaining_time}:R>'
+                    self.timer_message = await message.channel.send(self.prev_mes)
+                    response = []
+                    break
+            except Exception as e:
+                print(e)
                 return await message.channel.send("Sorry, I couldn't find that movie.")
         
             if self.game_start is None:
@@ -131,7 +141,7 @@ class MyClient(discord.Client):
                 await self.achievement_checker(message, -1)
         # even numbered turns we check if movie has particular actor
         else:
-            movie_code, movie_name = self.verify_movie_has_actor(message_content, self.list_of_movies)
+            movie_code, movie_name, movie_year = self.verify_movie_has_actor(message_content, self.list_of_movies)
             if movie_code == -1:
                 await message.channel.send("That movie was not found to include the previous actor.")
             elif movie_code == -2:
@@ -144,7 +154,7 @@ class MyClient(discord.Client):
                     time.sleep(1) # prevent rate limiting
                     #self.timer_message = None
                 self.current_movie = movie_code
-                self.prev_mes = f'Movie "{movie_name}" is valid.\nCurrently on turn {self.turns + 1}.\nGame will end <t:{remaining_time}:R>'
+                self.prev_mes = f'Movie "{movie_name} ({movie_year})" is valid.\nCurrently on turn {self.turns + 1}.\nGame will end <t:{remaining_time}:R>'
                 self.timer_message = await message.channel.send(self.prev_mes)
                 # only on a successful turn do we increment the turn and bar the player from making two moves in a row
                 self.turns += 1
@@ -255,6 +265,8 @@ class MyClient(discord.Client):
         url = f'https://api.themoviedb.org/3/search/movie?query={movie_string}&include_adult=false&language=en-US&page=1'
 
         response = requests.get(url, headers=self.headers)
+
+        todays_date = datetime.date.today().strftime('%Y-%m-%d')
         # when a movie is named, look it up and check if the id is in the list of movies that the previously named actor has acted in
         # if that movie is found, return the movie id for checking in actor's acted movies later
         try:
@@ -262,16 +274,37 @@ class MyClient(discord.Client):
                 movie_id = movie['id']
                 movie_title = movie['title']
                 if movie_id in self.movies_played_this_game:
-                    return -3, ""
+                    return -3, "", ""
                 if movie_id in movies_list:
+                    if self.compare_dates(movie["release_date"], todays_date):
+                        print(movie["release_date"])
+                        continue
                     self.movies_played_this_game.append(movie_id)
                     if 27 in movie["genre_ids"]:
                         self.horror_movie_counter
                     self.movie_years.add(movie["release_date"][:3])
-                    return movie_id, movie_title
+                    return movie_id, movie_title, movie["release_date"].split("-")[0]
         except:
-            return -2, "" # didn't find the movie
-        return -1, "" # movie not found to have actor
+            return -2, "", "" # didn't find the movie
+        return -1, "", "" # movie not found to have actor
+    
+    
+    def compare_dates(self, release_date, todays_date):
+        ry, rm, rd = release_date.split("-")
+        ty, tm, td = todays_date.split("-")
+        print(ry)
+        print(ty)
+        if int(ry) > int(ty):
+            return True
+        elif int(ry) < int(ty):
+            return False
+        elif int(rm) > int(tm):
+            return True
+        elif int(rm) < int(tm):
+            return False
+        elif int(rd) > int(td):
+            return True
+        return False
     
 
     async def achievement_checker(self, message, movie_id):
@@ -297,5 +330,5 @@ class MyClient(discord.Client):
 
 
 client = MyClient(intents=intents)
-client.run(secret.BOT_TOKEN)
+client.run(secret.TEST_BOT_TOKEN)
 
