@@ -6,6 +6,7 @@ import requests
 import json
 import os
 import datetime
+from fuzzywuzzy import fuzz
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -33,6 +34,9 @@ class MyClient(discord.Client):
         self.movie_years = set([])
         self.chris_counter = 0
         self.chrises = [62064, 73457, 74568, 16828]
+        self.ferrell_counter = 0
+        self.misses = 0
+        self.hemsworths = [74568, 96066]
         self.movies_played_this_game = []
         self.actors_played_this_game = []
         self.horror_movie_counter = 0
@@ -42,6 +46,9 @@ class MyClient(discord.Client):
             self.turns = int(saved_vars[0])
             self.current_movie = int(saved_vars[1])
             self.list_of_movies = [int(x) for x in saved_vars[2].split(",")]
+            self.actors_played_this_game = [int(x) for x in saved_vars[3].split(",")]
+            self.movies_played_this_game = [int(x) for x in saved_vars[4].split(",")]
+
 
 
     async def on_ready(self):
@@ -91,10 +98,15 @@ class MyClient(discord.Client):
             url = f'https://api.themoviedb.org/3/search/movie?query={message_content}&include_adult=false&language=en-US&page=1'
 
             response = json.loads(requests.get(url, headers=self.headers).text)["results"]
+            response = sorted(response, key=lambda x: fuzz.ratio(x["title"], message_content), reverse = True)
             entry = 0
             try:
-                while entry < len(response):
+                while True:
                     self.current_movie = response[entry]['id'] # get first movie id from search (too much work to iterate through all search results)
+                    if 99 in response[entry]["genre_ids"]:
+                        print("here")
+                        entry += 1
+                        continue
                     if self.compare_dates(response[entry]['release_date'], datetime.date.today().strftime('%Y-%m-%d')):
                         print(f"Movie has not come out yet", response[entry]['release_date'])
                         entry += 1
@@ -170,7 +182,11 @@ class MyClient(discord.Client):
         #self.valid_play.clear()
         try:
             with open("current_score.txt", "w") as f:
-                f.write(str(self.turns) + "\n" + str(self.current_movie) + "\n" + ",".join(str(x) for x in self.list_of_movies))
+                f.write(str(self.turns) + "\n" 
+                + str(self.current_movie) + "\n" 
+                + ",".join(str(x) for x in self.list_of_movies) + "\n" 
+                + ",".join(str(x) for x in self.actors_played_this_game) + "\n"
+                 + ",".join(str(x) for x in self.movies_played_this_game))
             await self.wait_for('valid_play', timeout=86400) # wait one day after a successful play
         except asyncio.TimeoutError: # if there are no plays and the timer runs out, end the game
             if not self.game_start:
@@ -197,7 +213,7 @@ class MyClient(discord.Client):
                     f.write(str(self.high_score))
             # reinitialize all variables, send game end message
             with open("current_score.txt", "w") as f:
-                f.write("0\n-1\n-1")
+                f.write("0\n-1\n-1\n-1\n-1")
             self.turns = 0
             self.game_start = None
             self.list_of_movies = []
@@ -207,6 +223,9 @@ class MyClient(discord.Client):
             self.tom_hanks_movies = [13, 497, 568, 591, 594, 857, 858, 862, 10193, 2280, 2565, 2619, 10466, 4147, 10905, 30172, 5516, 5707, 11287, 6538, 6951, 8358, 11974, 12309, 9489, 9586, 9591, 9800, 27348, 13448, 35866, 29968, 64685, 19259, 82424, 77887, 59861, 109424, 170039, 83542, 296098, 207932, 270010, 363676, 374164, 377229, 301528, 426128, 414792, 5255, 121100, 456703, 478639, 224355, 863, 516486, 522402, 567649, 581032, 31107, 638302, 785930, 885058, 923252, 937278, 940139, 1038873, 1061818, 1084244, 640, 10023, 40820, 140823, 130925, 173458, 339988, 356325, 406122, 252451, 446354, 464729, 501907, 325450, 614934, 729031, 532639, 127850, 213121, 237353, 256835, 43714, 550600, 504561, 606078, 740985, 747188, 1071583, 16279, 56235, 380994, 471198, 712062, 181007, 510173, 65262, 467062, 459682, 720203, 989517, 141498, 315085, 305642, 1111122, 1125624, 453422, 698229, 705899, 1016902, 37641, 454330, 473544, 711704, 253639, 962192, 574379, 87061, 32562, 35, 40196, 966435, 838219, 1150794, 15302, 979163, 1113682, 269535, 298859, 1033548, 920, 558912, 773655, 32694, 28236, 881931, 126314, 20763, 1065395, 653610, 42348, 285783, 316067, 37757, 47813]
             self.movie_years = set([])
             self.chris_counter = 0
+            self.ferrell_counter = 0
+            self.misses = 0
+            self.hemsworths = [74568, 96066]
             self.movies_played_this_game = []
             self.actors_played_this_game = []
             self.horror_movie_counter = 0
@@ -220,15 +239,19 @@ class MyClient(discord.Client):
         # first make a call to look up the actor and get the actor id
         url = f'https://api.themoviedb.org/3/search/person?query={actor_string}&include_adult=false&language=en-US&page=1'
 
-        response = requests.get(url, headers=self.headers)
+        response = json.loads(requests.get(url, headers=self.headers).text)['results']
+        response = sorted(response, key=lambda x: fuzz.ratio(x["name"], actor_string), reverse = True)
 
         try:
-            results_dict = json.loads(response.text)['results'][0] # use the first result for an actor (too lazy rn to loop through all of them)
+            results_dict = response[0] # use the first result for an actor (too lazy rn to loop through all of them)
         except:
+            self.misses += 1
             return "-2", []
 
         actor_name = results_dict['name']
         actor_id = results_dict["id"]
+        if actor_id == 23659 and self.ferrell_counter != 2:
+            self.ferrell_counter += 1
         if actor_id in self.actors_played_this_game:
             return "-3", []
 
@@ -240,6 +263,7 @@ class MyClient(discord.Client):
         try:
             acted_in_movies_list = json.loads(response.text)['cast']
         except:
+            self.misses += 1
             return "-2", [] # didn't find the actor
 
         found = False
@@ -254,6 +278,8 @@ class MyClient(discord.Client):
                 self.actors_played_this_game.append(actor_id)
                 if actor_id in self.chrises:
                     self.chris_counter += 1
+                if actor_id in self.hemsworths:
+                    self.hemsworths.remove(actor_id)
         
         if found:
             return actor_name, movies_list
@@ -264,17 +290,21 @@ class MyClient(discord.Client):
     def verify_movie_has_actor(self, movie_string, movies_list):
         url = f'https://api.themoviedb.org/3/search/movie?query={movie_string}&include_adult=false&language=en-US&page=1'
 
-        response = requests.get(url, headers=self.headers)
+        response = json.loads(requests.get(url, headers=self.headers).text)['results']
+        response = sorted(response, key=lambda x: fuzz.ratio(x["title"], movie_string), reverse = True)
+
 
         todays_date = datetime.date.today().strftime('%Y-%m-%d')
         # when a movie is named, look it up and check if the id is in the list of movies that the previously named actor has acted in
         # if that movie is found, return the movie id for checking in actor's acted movies later
         try:
-            for movie in json.loads(response.text)['results']: # check ALL the search results for the named movie, since in my testing this search capacity is poor
+            for movie in response: # check ALL the search results for the named movie, since in my testing this search capacity is poor
                 movie_id = movie['id']
                 movie_title = movie['title']
                 if movie_id in self.movies_played_this_game:
                     return -3, "", ""
+                if 99 in movie["genre_ids"]:
+                    continue
                 if movie_id in movies_list:
                     if self.compare_dates(movie["release_date"], todays_date):
                         print(movie["release_date"])
@@ -285,6 +315,7 @@ class MyClient(discord.Client):
                     self.movie_years.add(movie["release_date"][:3])
                     return movie_id, movie_title, movie["release_date"].split("-")[0]
         except:
+            self.misses += 1
             return -2, "", "" # didn't find the movie
         return -1, "", "" # movie not found to have actor
     
@@ -325,6 +356,15 @@ class MyClient(discord.Client):
         if movie_id in self.tilda_swinton_movies and self.turns <= 10:
             await message.channel.send("Congratulations! You made the achievement: 'TL;DR Swinton:\nName a Tilda Swinton movie in the first 10 turns of a game.'")
             self.tilda_swinton_movies = []
+        if self.ferrell_counter == 2:
+            await message.channel.send("Congratulations! You made the achievement: 'Feral for Ferrell:\nAttempt to play Will Ferrell twice in one game.'")
+            self.ferrell_counter += 1
+        if self.misses >= 10:
+            await message.channel.send("Congratulations! You made the achievement: 'Tsk tsk:\nName an actor or movie Moviebomb doesn't know ten times in one game.'")
+            self.misses = -100000000000
+        if self.hemsworths == []:
+            await message.channel.send("Congratulations! You made the achievement: 'But what about me?:\nName the two more famous Hemsworths (there's no achievement for naming the third).'")
+            self.hemsworths = [-1]
 
 
 
