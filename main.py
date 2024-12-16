@@ -64,7 +64,7 @@ class MyClient(discord.Client):
     async def on_message(self, message):
         time.sleep(1) # prevent rate limiting
         #self.valid_play = False
-        message_content = message.content.replace(f'<@{secret.TEST_BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
+        message_content = message.content.replace(f'<@{secret.BOT_USERNAME}>', '') # remove the @ing of the bot from the message content when looking things up
         remaining_time = int(time.time()) + 86400 # current time plus 24 hours in seconds
         if message.author == client.user: # don't consider messages the bot sends
             if self.turns == 0:
@@ -72,10 +72,10 @@ class MyClient(discord.Client):
         elif not self.user.mentioned_in(message) or message.mention_everyone is True: # don't consider messages where the bot is not @ed
             if self.turns == 0:
                 return
-        #elif self.previous_player == message.author: # don't allow the same person to make two plays in a row
-        #    if self.turns == 0:
-        #        return
-        #    await message.channel.send("Sorry, the same person cannot make two plays in a row!")
+        elif self.previous_player == message.author: # don't allow the same person to make two plays in a row
+           if self.turns == 0:
+               return
+           await message.channel.send("Sorry, the same person cannot make two plays in a row!")
         elif message_content.strip() == "go back" and self.turns == 0:
             return await message.channel.send("There's nothing to go back to, silly.")
         elif message_content.strip() == "go back" and self.went_back == False and self.turns > 0:
@@ -370,5 +370,5 @@ class MyClient(discord.Client):
 
 
 client = MyClient(intents=intents)
-client.run(secret.TEST_BOT_TOKEN)
+client.run(secret.BOT_TOKEN)
 
